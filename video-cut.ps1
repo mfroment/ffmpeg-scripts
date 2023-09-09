@@ -1,10 +1,10 @@
 # video-cut.ps1
 
 # When specifying start and end times with ffmpeg for cutting a video
-# without reencoding, ffmpeg looks for the nearest keyframe and starts 
+# without reencoding, ffmpeg looks for the nearest keyframe and starts
 # there. In order to start at the exact start time, the part between
-# the start time and the first keyframe is reencoded with the same 
-# codec as the input video, then is concatenated with the rest of the 
+# the start time and the first keyframe is reencoded with the same
+# codec as the input video, then is concatenated with the rest of the
 # video (not reencoded). The audio is cut separately and recombined with
 # the video.
 #
@@ -13,8 +13,8 @@
 
 # Prerequisite: portable installation of ffmpeg, e.g. in C:\Portable\ffmpeg
 # Script installation: put in the scripts folder in the ffmped installation folder, e.g. in C:\Portable\ffmpeg\scripts
-# Running: This is a bit annoying:  
-#    powershell -ExecutionPolicy Bypass -File C:\Portable\ffmpeg\scripts\video-cut.ps1 88 188 1.webm out.webm
+# Running: You may need to bypass the policy disabling script execution
+#    powershell -ExecutionPolicy Bypass -File C:\Portable\ffmpeg\scripts\video-cut.ps1 88 188 input.webm output.webm
 #    (or use the bat file)
 
 param (
