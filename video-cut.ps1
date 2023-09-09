@@ -33,9 +33,9 @@ $ffprobePath = "$scriptDir\..\bin\ffprobe.exe"
 $video_info = & $ffprobePath -v error -select_streams v:0 -show_entries stream=codec_name,bit_rate -of default=nw=1 $inputFile
 $video_codec = ($video_info -match "codec_name=(.*)")[0].Split("=")[1]
 
-# Get the audio codec name from the original video
-$audio_info = & $ffprobePath -v error -select_streams a:0 -show_entries stream=codec_name,bit_rate -of default=nw=1 $inputFile
-$audio_codec = ($audio_info -match "codec_name=(.*)")[0].Split("=")[1]
+# Get the audio codec name from the original video (unused)
+# $audio_info = & $ffprobePath -v error -select_streams a:0 -show_entries stream=codec_name,bit_rate -of default=nw=1 $inputFile
+# $audio_codec = ($audio_info -match "codec_name=(.*)")[0].Split("=")[1]
 
 # Find the next keyframe time after the provided start time
 $keyframeTime = $null
