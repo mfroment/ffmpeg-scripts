@@ -29,34 +29,36 @@ $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $ffmpegPath = "$scriptDir\..\bin\ffmpeg.exe"
 $ffprobePath = "$scriptDir\..\bin\ffprobe.exe"
 
-# Get the video codec name and bit rate from the original video
-$video_info = & $ffprobePath -v error -select_streams v:0 -show_entries stream=codec_name,bit_rate -of default=nw=1 $inputFile
+# Get the video codec name, bit rate and time base from the original video
+$video_info = & $ffprobePath -v error -select_streams v:0 -show_entries stream=codec_name,bit_rate,time_base -of default=nw=1 $inputFile
 $video_codec = ($video_info -match "codec_name=(.*)")[0].Split("=")[1]
+$time_base = (($video_info -match "time_base=(.*)")[0].Split("=")[1] -split "/")[1]
 
 # Get the audio codec name from the original video (unused)
 # $audio_info = & $ffprobePath -v error -select_streams a:0 -show_entries stream=codec_name,bit_rate -of default=nw=1 $inputFile
 # $audio_codec = ($audio_info -match "codec_name=(.*)")[0].Split("=")[1]
 
 # Find the next keyframe time after the provided start time
+# Note: use -skip_frame nokey for speed/correctness (some videos return the incorrect timestamps otherwise)
 $keyframeTime = $null
-$ffprobeOutput = & $ffprobePath -select_streams v -show_entries "frame=pkt_dts_time,pict_type" -of csv -v quiet -i $inputFile 2>&1
+$ffprobeOutput = & $ffprobePath -select_streams v -show_frames -skip_frame nokey -show_entries "frame=pkt_dts_time,pict_type" -of csv -v quiet -i $inputFile 2>&1
 foreach ($line in $ffprobeOutput) {
     if ($line -match ",I") {
         $fields = $line -split ","
         $thisKeyframeTime = [double]$fields[1]
-        if ($thisKeyframeTime -ge [double]$startTime) {
+        if ($thisKeyframeTime -gt [double]$startTime) {
             $keyframeTime = $thisKeyframeTime
             break
         }
     }
 }
 
-if ($keyframeTime -eq $null) {
+if ($null -eq $keyframeTime) {
     Write-Host "No keyframe found."
     exit 1
 }
 
-# Intermediate files need to be created with the same cotainer (= extension) otherwise there can
+# Intermediate files need to be created with the same container (= extension) otherwise there can
 # be glitches when concataining them later
 $fileExtension = [System.IO.Path]::GetExtension($inputFile)
 
@@ -67,10 +69,10 @@ $temp_video = "___temp_video$fileExtension"
 $temp_audio = "___temp_audio$fileExtension"
 $temp_list = "___temp_list.txt"
 
-# Cut using the original codec up to the nearest keyframe
-& $ffmpegPath -ss $startTime -to $keyframeTime -i $inputFile -c:v $video_codec -an -strict -2 $temp1
+# Re-encode the small portion from the start time to the nearest keyframe
+& $ffmpegPath -ss $startTime -to $keyframeTime -i $inputFile -c:v $video_codec -an -strict -2 -video_track_timescale $time_base $temp1
 
-# Re-encode the small portion starting from the nearest keyframe
+# Cut using the original codec from nearest keyframe to the end
 & $ffmpegPath -i $inputFile -ss $keyframeTime -to $endTime -c:v copy -an $temp2
 
 # Concatenate the video parts
