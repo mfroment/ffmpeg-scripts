@@ -24,6 +24,31 @@ param (
     [string]$outputFile
 )
 
+# Utility function
+function Convert-ToSeconds {
+    param (
+        [string]$timeString
+    )
+    # Split the string by colons and reverse the array
+    $parts = $timeString -split ":"
+    [Array]::Reverse($parts)
+    # Throw if more than 3 parts, otherwise pad with zeroes if needed
+    if ($parts.Length -gt 3) {
+        throw "Invalid time format. Too many parts."
+    }
+    while ($parts.Length -lt 3) {
+        $parts += 0
+    }
+    $seconds = [double]$parts[0]
+    $minutes = [double]$parts[1]
+    $hours = [double]$parts[2]
+    return ($hours * 3600) + ($minutes * 60) + $seconds
+}
+
+# parse start/end times:
+$startTime = [double](Convert-ToSeconds $startTime)
+$endTime = [double](Convert-ToSeconds $endTime)
+
 # Define paths to ffmpeg and ffprobe based on the script's location
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Definition -Parent
 $ffmpegPath = "$scriptDir\..\bin\ffmpeg.exe"
@@ -46,7 +71,7 @@ foreach ($line in $ffprobeOutput) {
     if ($line -match ",I") {
         $fields = $line -split ","
         $thisKeyframeTime = [double]$fields[1]
-        if ($thisKeyframeTime -gt [double]$startTime) {
+        if ($thisKeyframeTime -gt $startTime) {
             $keyframeTime = $thisKeyframeTime
             break
         }
