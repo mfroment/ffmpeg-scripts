@@ -11,8 +11,8 @@
 # Note: this works for webm containing VP9+opus but it's possible that some
 #       other combinations require additional tweaks.
 
-# Prerequisite: portable installation of ffmpeg, e.g. in C:\Portable\ffmpeg
-# Script installation: put in the scripts folder in the ffmped installation folder, e.g. in C:\Portable\ffmpeg\scripts
+# Prerequisite: portable installation of ffmpeg, e.g. in C:\Portable\ffmpeg\
+# Script installation: put in the scripts folder in the ffmpeg installation folder (in C:\Portable\ffmpeg\scripts\ for the example above)
 # Running: You may need to bypass the policy disabling script execution
 #    powershell -ExecutionPolicy Bypass -File C:\Portable\ffmpeg\scripts\video-cut.ps1 88 188 input.webm output.webm
 #    (or use the bat file)
