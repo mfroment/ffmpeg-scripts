@@ -66,22 +66,22 @@ temp_audio="___temp_audio.$fileExtension"
 temp_list="___temp_list.txt"
 
 # Re-encode the small portion from the start time to the nearest keyframe
-ffmpeg -ss "$startTime" -to "$keyframeTime" -i "$inputFile" -c:v "$video_codec" -an -strict -2 -video_track_timescale "$time_base" "$temp1"
+ffmpeg -y -ss "$startTime" -to "$keyframeTime" -i "$inputFile" -c:v "$video_codec" -an -strict -2 -video_track_timescale "$time_base" "$temp1"
 
 # Cut using the original codec from nearest keyframe to the end
-ffmpeg -i "$inputFile" -ss "$keyframeTime" -to "$endTime" -c:v copy -an "$temp2"
+ffmpeg -y -i "$inputFile" -ss "$keyframeTime" -to "$endTime" -c:v copy -an "$temp2"
 
 # Concatenate the video parts
 echo -e "file '$temp1'\nfile '$temp2'" > "$temp_list"
 
-ffmpeg -f concat -safe 0 -i "$temp_list" -c copy -copyts "$temp_video"
+ffmpeg -y -f concat -safe 0 -i "$temp_list" -c copy -copyts "$temp_video"
 
 # Cut the audio (exactly at start with exact duration)
 videoDuration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$temp_video")
-ffmpeg -i "$inputFile" -ss "$startTime" -t "$videoDuration" -vn -c:a copy "$temp_audio"
+ffmpeg -y -i "$inputFile" -ss "$startTime" -t "$videoDuration" -vn -c:a copy "$temp_audio"
 
 # Add the cut audio to the final video
-ffmpeg -i "$temp_video" -i "$temp_audio" -c:v copy -c:a copy "$outputFile"
+ffmpeg -y -i "$temp_video" -i "$temp_audio" -c:v copy -c:a copy "$outputFile"
 
 # Cleanup
 rm "$temp1" "$temp2" "$temp_audio" "$temp_video" "$temp_list"
