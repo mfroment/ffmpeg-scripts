@@ -27,6 +27,11 @@ fix_leading_zero() {
     sed 's/^\./0./;s/^-\./-0./'
 }
 
+# Evaluate a bc expression and round the result to the nearest millisecond.
+calc_ms() {
+    echo "scale=3; ($(echo "scale=10; $1" | bc) + 0.0005) / 1" | bc | fix_leading_zero
+}
+
 # Get fps as a raw fraction string "num/den" (e.g. "30000/1001" or "25/1").
 get_fps_fraction() {
     ffprobe -v error -select_streams v:0 \
@@ -51,14 +56,14 @@ convert_to_seconds() {
         if [[ -z "$fps_frac" ]]; then
             echo "Error: could not read frame rate from '$inputFile'." >&2; exit 1
         fi
-        echo "scale=10; $frame * $fps_den / $fps_num" | bc | fix_leading_zero
+        calc_ms "$frame * $fps_den / $fps_num"
         return
     fi
 
     # ---- p/q: exact rational seconds ----
     if [[ "$input" =~ ^([0-9]+)/([0-9]+)$ ]]; then
         local p="${BASH_REMATCH[1]}" q="${BASH_REMATCH[2]}"
-        echo "scale=10; $p / $q" | bc | fix_leading_zero
+        calc_ms "$p / $q"
         return
     fi
 
