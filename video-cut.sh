@@ -83,8 +83,14 @@ video_info=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_nam
 video_codec=$(echo "$video_info" | grep -oP 'codec_name=\K.*')
 time_base=$(echo "$video_info" | grep -oP 'time_base=\K.*' | cut -d'/' -f2)
 
-# Find the next keyframe time after the provided start time
-keyframeTime=$(ffprobe -select_streams v -show_frames -skip_frame nokey -show_entries "frame=pkt_dts_time,pict_type" -of csv -v quiet -i "$inputFile" | grep ",I" | awk -F',' -v st="$startTime" '$2 > st {print $2; exit}')
+# Find the next keyframe time after the provided start time.
+# pkt_dts_time returns N/A for some containers (e.g. mkv/Constrained Baseline),
+# so fall back to best_effort_timestamp_time if needed.
+keyframeTime=$(ffprobe -select_streams v -show_frames -skip_frame nokey -show_entries "frame=pkt_dts_time,pict_type" -of csv -v quiet -i "$inputFile" | grep ",I" | awk -F',' -v st="$startTime" '$2 != "N/A" && $2 > st {print $2; exit}')
+
+if [ -z "$keyframeTime" ]; then
+    keyframeTime=$(ffprobe -select_streams v -show_frames -skip_frame nokey -show_entries "frame=best_effort_timestamp_time,pict_type" -of csv -v quiet -i "$inputFile" | grep ",I" | awk -F',' -v st="$startTime" '$2 > st {print $2; exit}')
+fi
 
 if [ -z "$keyframeTime" ]; then
     echo "No keyframe found."
