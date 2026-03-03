@@ -102,15 +102,20 @@ temp_video="___temp_video_$$.$fileExtension"
 temp_audio="___temp_audio_$$.$fileExtension"
 temp_list="___temp_list_$$.txt"
 
-# Re-encode the small portion from the start time to the nearest keyframe
-ffmpeg -y -ss "$startTime" -to "$keyframeTime" -i "$inputFile" -c:v "$video_codec" -an -strict -2 -video_track_timescale "$time_base" "$temp1"
-
-# Cut using the original codec from nearest keyframe to the end
-ffmpeg -y -i "$inputFile" -ss "$keyframeTime" -to "$endTime" -c:v copy -an "$temp2"
-
-# Concatenate the video parts
-echo -e "file '$temp1'\nfile '$temp2'" > "$temp_list"
-ffmpeg -y -f concat -safe 0 -i "$temp_list" -c copy -copyts "$temp_video"
+# Re-encode the small portion from the start time to the nearest keyframe,
+# then stream-copy the rest. If the end time falls before the keyframe,
+# re-encode the whole range in one pass instead.
+if [ "$(echo "$endTime <= $keyframeTime" | bc -l)" -eq 1 ]; then
+    # Entire range is within one GOP: re-encode from start to end.
+    ffmpeg -y -ss "$startTime" -to "$endTime" -i "$inputFile" -c:v "$video_codec" -an -strict -2 -video_track_timescale "$time_base" "$temp_video"
+else
+    # General case: re-encode start→keyframe, stream-copy keyframe→end, concat.
+    ffmpeg -y -ss "$startTime" -to "$keyframeTime" -i "$inputFile" -c:v "$video_codec" -an -strict -2 -video_track_timescale "$time_base" "$temp1"
+    ffmpeg -y -i "$inputFile" -ss "$keyframeTime" -to "$endTime" -c:v copy -an "$temp2"
+    echo -e "file '$temp1'\nfile '$temp2'" > "$temp_list"
+    ffmpeg -y -f concat -safe 0 -i "$temp_list" -c copy -copyts "$temp_video"
+    rm "$temp1" "$temp2" "$temp_list"
+fi
 
 # Cut the audio (exactly at start with exact duration)
 videoDuration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$temp_video")
@@ -120,4 +125,4 @@ ffmpeg -y -i "$inputFile" -ss "$startTime" -t "$videoDuration" -vn -c:a copy "$t
 ffmpeg -y -i "$temp_video" -i "$temp_audio" -c:v copy -c:a copy "$outputFile"
 
 # Cleanup
-rm "$temp1" "$temp2" "$temp_audio" "$temp_video" "$temp_list"
+rm "$temp_audio" "$temp_video"
