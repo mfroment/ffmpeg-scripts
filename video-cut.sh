@@ -34,6 +34,13 @@ get_fps_fraction() {
         -of default=nw=1:nokey=1 "$1"
 }
 
+# Cache fps fraction upfront — used by convert_to_seconds for fN inputs.
+# Only fetched once even if both start and end are frame numbers.
+fps_frac=$(get_fps_fraction "$inputFile")
+fps_num="${fps_frac%%/*}"
+fps_den="${fps_frac##*/}"
+if [[ -z "$fps_den" || "$fps_den" == "$fps_frac" ]]; then fps_den=1; fi
+
 # Convert a time argument to decimal seconds.
 convert_to_seconds() {
     local input="$1"
@@ -41,11 +48,9 @@ convert_to_seconds() {
     # ---- fN: frame number ----
     if [[ "$input" =~ ^f([0-9]+)$ ]]; then
         local frame="${BASH_REMATCH[1]}"
-        local fps_frac fps_num fps_den
-        fps_frac=$(get_fps_fraction "$inputFile")
-        fps_num="${fps_frac%%/*}"
-        fps_den="${fps_frac##*/}"
-        if [[ -z "$fps_den" || "$fps_den" == "$fps_frac" ]]; then fps_den=1; fi
+        if [[ -z "$fps_frac" ]]; then
+            echo "Error: could not read frame rate from '$inputFile'." >&2; exit 1
+        fi
         echo "scale=10; $frame * $fps_den / $fps_num" | bc | fix_leading_zero
         return
     fi
