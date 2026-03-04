@@ -9,7 +9,7 @@
 #   mm:ss      minutes and seconds (e.g. 1:30)
 #   hh:mm:ss   hours, minutes, seconds (e.g. 0:01:30)
 #   p/q        exact rational seconds (e.g. 30000/1001)
-#   fN         frame number, 0-indexed (e.g. f120)
+#   fN         frame number, 0-indexed (e.g. f120). Note: for CFR videos only
 
 if [ "$#" -ne 4 ]; then
     echo "Usage: $0 start_time end_time input_file output_file"
