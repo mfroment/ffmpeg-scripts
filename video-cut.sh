@@ -2,7 +2,8 @@
 
 # video-cut.sh
 #
-# Usage: ./video-cut.sh <start> <end> <input> <output>
+# Usage: ./video-cut.sh <start> <end> <input> [<output>]
+#   <output> defaults to <input>_cut.<ext> if omitted
 #
 # Time formats accepted for <start> and <end>:
 #   123        plain seconds (integer or decimal, e.g. 88, 3.14)
@@ -11,15 +12,21 @@
 #   p/q        exact rational seconds (e.g. 30000/1001)
 #   fN         frame number, 0-indexed (e.g. f120). Note: for CFR videos only
 
-if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 start_time end_time input_file output_file"
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+    echo "Usage: $0 start_time end_time input_file [output_file]"
     exit 1
 fi
 
 startArg=$1
 endArg=$2
 inputFile=$3
-outputFile=$4
+if [ "$#" -eq 4 ]; then
+    outputFile=$4
+else
+    base="${inputFile%.*}"
+    ext="${inputFile##*.}"
+    outputFile="${base}_cut.${ext}"
+fi
 
 # Ensure bc output always has a leading zero before the decimal point.
 # bc outputs ".333" for values < 1; ffmpeg 6.x rejects that format.
