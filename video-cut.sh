@@ -100,6 +100,12 @@ video_info=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_nam
 video_codec=$(echo "$video_info" | grep -oP 'codec_name=\K.*')
 time_base=$(echo "$video_info" | grep -oP 'time_base=\K.*' | cut -d'/' -f2)
 
+# libaom-av1 is the reference encoder and extremely slow; prefer libsvtav1 for re-encode steps
+case "$video_codec" in
+    av1) video_encoder="libsvtav1" ;;
+    *) video_encoder="$video_codec" ;;
+esac
+
 # Find the next keyframe time after the provided start time.
 # pkt_dts_time returns N/A for some containers (e.g. mkv/Constrained Baseline),
 # so fall back to best_effort_timestamp_time if needed.
@@ -130,10 +136,10 @@ temp_list="___temp_list_$$.txt"
 # re-encode the whole range in one pass instead.
 if [ "$(echo "$endTime <= $keyframeTime" | bc -l)" -eq 1 ]; then
     # Entire range is within one GOP: re-encode from start to end.
-    ffmpeg -y -ss "$startTime" -to "$endTime" -i "$inputFile" -c:v "$video_codec" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp_video"
+    ffmpeg -y -ss "$startTime" -to "$endTime" -i "$inputFile" -c:v "$video_encoder" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp_video"
 else
     # General case: re-encode start→keyframe, stream-copy keyframe→end, concat.
-    ffmpeg -y -ss "$startTime" -to "$keyframeTime" -i "$inputFile" -c:v "$video_codec" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp1"
+    ffmpeg -y -ss "$startTime" -to "$keyframeTime" -i "$inputFile" -c:v "$video_encoder" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp1"
     ffmpeg -y -i "$inputFile" -ss "$keyframeTime" -to "$endTime" -c:v copy -an "$temp2"
     echo -e "file '$temp1'\nfile '$temp2'" > "$temp_list"
     ffmpeg -y -f concat -safe 0 -i "$temp_list" -c copy -copyts "$temp_video"
