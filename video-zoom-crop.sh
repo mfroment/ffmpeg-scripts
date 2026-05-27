@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
-# video-zoom-crop.sh — Crop & upscale a video to a region, preserving aspect ratio and quality
 #
-# Usage:
-#   ./video-zoom-crop.sh <x> <y> <w> <h> <input> [output]
+# video-zoom-crop.sh
 #
-#   <x> <y>        Top-left corner of the region of interest
-#   <w> <h>        Width and height of the region of interest
-#   <input>        Source video file
-#   [output]       Optional output filename (default: <input>_zoomed.<ext>)
-#
-# Requirements: ffmpeg, ffprobe, bc
+# Crop & upscale a video to a region, preserving aspect ratio and quality
 #
 # Behaviour:
 #   - The crop region is expanded (never shrunk) so its aspect ratio matches
@@ -17,6 +10,11 @@
 #   - The expanded crop is then scaled back up to the original resolution using Lanczos.
 #   - Video is re-encoded with CRF-based quality targeting matching the source codec.
 #   - Audio streams and metadata are copied without re-encoding.
+#
+# Usage: ./video-zoom-crop.sh <x> <y> <w> <h> <input> [output]
+#   <x> <y>        Top-left corner of the region of interest
+#   <w> <h>        Width and height of the region of interest
+#   <output> defaults to <input>_zoomed.<ext> if omitted
 
 set -euo pipefail
 

@@ -1,6 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # video-cut.sh
+#
+# Cuts a segment from a video between specified start and end times, 
+# re-encoding only the portion from the start time to the nearest keyframe
+# (if needed) for accurate cutting, then stream-copying the rest for speed.
+# The audio is cut exactly to match the final video duration.
 #
 # Usage: ./video-cut.sh <start> <end> <input> [<output>]
 #   <output> defaults to <input>_cut.<ext> if omitted

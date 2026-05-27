@@ -1,11 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # video-frame-burn.sh
 #
 # Creates a video copy with frame number and timestamps burned onto each frame.
 # Burned info: frame number (0-indexed), decimal seconds, and hh:mm:ss.ms time.
 #
-# Usage: ./video-frame-burn.sh <input_video> [output_video]
+# Usage: ./video-frame-burn.sh <input> [output]
+#   <output> defaults to <input>_frameinfo.<ext> if omitted
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
     echo "Usage: $0 <input_video> [output_video]"
