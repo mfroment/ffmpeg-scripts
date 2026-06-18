@@ -2,7 +2,7 @@
 
 # video-cut.sh
 #
-# Cuts a segment from a video between specified start and end times, 
+# Cuts a segment from a video between specified start and end times,
 # re-encoding only the portion from the start time to the nearest keyframe
 # (if needed) for accurate cutting, then stream-copying the rest for speed.
 # The audio is cut exactly to match the final video duration.
@@ -18,19 +18,19 @@
 #   fN         frame number, 0-indexed (e.g. f120). Note: for CFR videos only
 
 if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
-    echo "Usage: $0 start_time end_time input_file [output_file]"
+    echo "Usage: $0 start_time end_time input [output]"
     exit 1
 fi
 
-startArg=$1
-endArg=$2
-inputFile=$3
+start_arg=$1
+end_arg=$2
+input_file=$3
 if [ "$#" -eq 4 ]; then
-    outputFile=$4
+    output_file=$4
 else
-    base="${inputFile%.*}"
-    ext="${inputFile##*.}"
-    outputFile="${base}_cut.${ext}"
+    base="${input_file%.*}"
+    ext="${input_file##*.}"
+    output_file="${base}_cut.${ext}"
 fi
 
 # Ensure bc output always has a leading zero before the decimal point.
@@ -53,7 +53,7 @@ get_fps_fraction() {
 
 # Cache fps fraction upfront — used by convert_to_seconds for fN inputs.
 # Only fetched once even if both start and end are frame numbers.
-fps_frac=$(get_fps_fraction "$inputFile")
+fps_frac=$(get_fps_fraction "$input_file")
 fps_num="${fps_frac%%/*}"
 fps_den="${fps_frac##*/}"
 if [[ -z "$fps_den" || "$fps_den" == "$fps_frac" ]]; then fps_den=1; fi
@@ -66,7 +66,7 @@ convert_to_seconds() {
     if [[ "$input" =~ ^f([0-9]+)$ ]]; then
         local frame="${BASH_REMATCH[1]}"
         if [[ -z "$fps_frac" ]]; then
-            echo "Error: could not read frame rate from '$inputFile'." >&2; exit 1
+            echo "Error: could not read frame rate from '$input_file'." >&2; exit 1
         fi
         calc_ms "$frame * $fps_den / $fps_num"
         return
@@ -80,6 +80,7 @@ convert_to_seconds() {
     fi
 
     # ---- hh:mm:ss, mm:ss, or plain seconds ----
+    local -a parts
     IFS=: read -r -a parts <<< "$input"
     case "${#parts[@]}" in
         1) echo "${parts[0]}" ;;
@@ -90,73 +91,73 @@ convert_to_seconds() {
 }
 
 # Parse start/end times
-startTime=$(convert_to_seconds "$startArg")
-endTime=$(convert_to_seconds "$endArg")
+start_time=$(convert_to_seconds "$start_arg")
+end_time=$(convert_to_seconds "$end_arg")
 
 # Guard against empty or inverted range
-isEmpty=$(echo "$endTime <= $startTime" | bc -l)
-if [ "$isEmpty" -eq 1 ]; then
-    echo "Error: end time ($endArg) must be strictly greater than start time ($startArg)." >&2
+is_empty=$(echo "$end_time <= $start_time" | bc -l)
+if [ "$is_empty" -eq 1 ]; then
+    echo "Error: end time ($end_arg) must be strictly greater than start time ($start_arg)." >&2
     exit 1
 fi
 
 # Get the video codec name, bit rate, and time base from the original video
-video_info=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,bit_rate,time_base -of default=nw=1 "$inputFile")
-video_codec=$(echo "$video_info" | grep -oP 'codec_name=\K.*')
+video_info=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,bit_rate,time_base -of default=nw=1 "$input_file")
+src_codec=$(echo "$video_info" | grep -oP 'codec_name=\K.*')
 time_base=$(echo "$video_info" | grep -oP 'time_base=\K.*' | cut -d'/' -f2)
 
 # libaom-av1 is the reference encoder and extremely slow; prefer libsvtav1 for re-encode steps
-case "$video_codec" in
+case "$src_codec" in
     av1) video_encoder="libsvtav1" ;;
-    *) video_encoder="$video_codec" ;;
+    *) video_encoder="$src_codec" ;;
 esac
 
 # Find the next keyframe time after the provided start time.
 # pkt_dts_time returns N/A for some containers (e.g. mkv/Constrained Baseline),
 # so fall back to best_effort_timestamp_time if needed.
-keyframeTime=$(ffprobe -select_streams v -show_frames -skip_frame nokey -show_entries "frame=pkt_dts_time,pict_type" -of csv -v quiet -i "$inputFile" | grep ",I" | awk -F',' -v st="$startTime" '$2 != "N/A" && $2 > st {print $2; exit}')
+keyframe_time=$(ffprobe -select_streams v -show_frames -skip_frame nokey -show_entries "frame=pkt_dts_time,pict_type" -of csv -v quiet -i "$input_file" | grep ",I" | awk -F',' -v st="$start_time" '$2 != "N/A" && $2 > st {print $2; exit}')
 
-if [ -z "$keyframeTime" ]; then
-    keyframeTime=$(ffprobe -select_streams v -show_frames -skip_frame nokey -show_entries "frame=best_effort_timestamp_time,pict_type" -of csv -v quiet -i "$inputFile" | grep ",I" | awk -F',' -v st="$startTime" '$2 > st {print $2; exit}')
+if [ -z "$keyframe_time" ]; then
+    keyframe_time=$(ffprobe -select_streams v -show_frames -skip_frame nokey -show_entries "frame=best_effort_timestamp_time,pict_type" -of csv -v quiet -i "$input_file" | grep ",I" | awk -F',' -v st="$start_time" '$2 > st {print $2; exit}')
 fi
 
-if [ -z "$keyframeTime" ]; then
+if [ -z "$keyframe_time" ]; then
     echo "No keyframe found."
     exit 1
 fi
 
 # Intermediate files need to be created with the same container (= extension) otherwise there can
 # be glitches when concatenating them later
-fileExtension="${inputFile##*.}"
+ext="${input_file##*.}"
 
 # Create temp files names with the appropriate extension
-temp1="___temp1_$$.$fileExtension"
-temp2="___temp2_$$.$fileExtension"
-temp_video="___temp_video_$$.$fileExtension"
-temp_audio="___temp_audio_$$.$fileExtension"
+temp1="___temp1_$$.$ext"
+temp2="___temp2_$$.$ext"
+temp_video="___temp_video_$$.$ext"
+temp_audio="___temp_audio_$$.$ext"
 temp_list="___temp_list_$$.txt"
 
 # Re-encode the small portion from the start time to the nearest keyframe,
 # then stream-copy the rest. If the end time falls before the keyframe,
 # re-encode the whole range in one pass instead.
-if [ "$(echo "$endTime <= $keyframeTime" | bc -l)" -eq 1 ]; then
+if [ "$(echo "$end_time <= $keyframe_time" | bc -l)" -eq 1 ]; then
     # Entire range is within one GOP: re-encode from start to end.
-    ffmpeg -y -ss "$startTime" -to "$endTime" -i "$inputFile" -c:v "$video_encoder" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp_video"
+    ffmpeg -y -ss "$start_time" -to "$end_time" -i "$input_file" -c:v "$video_encoder" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp_video"
 else
     # General case: re-encode start→keyframe, stream-copy keyframe→end, concat.
-    ffmpeg -y -ss "$startTime" -to "$keyframeTime" -i "$inputFile" -c:v "$video_encoder" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp1"
-    ffmpeg -y -i "$inputFile" -ss "$keyframeTime" -to "$endTime" -c:v copy -an "$temp2"
+    ffmpeg -y -ss "$start_time" -to "$keyframe_time" -i "$input_file" -c:v "$video_encoder" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp1"
+    ffmpeg -y -i "$input_file" -ss "$keyframe_time" -to "$end_time" -c:v copy -an "$temp2"
     echo -e "file '$temp1'\nfile '$temp2'" > "$temp_list"
     ffmpeg -y -f concat -safe 0 -i "$temp_list" -c copy -copyts "$temp_video"
     rm "$temp1" "$temp2" "$temp_list"
 fi
 
 # Cut the audio (exactly at start with exact duration)
-videoDuration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$temp_video")
-ffmpeg -y -i "$inputFile" -ss "$startTime" -t "$videoDuration" -vn -c:a copy "$temp_audio"
+video_duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$temp_video")
+ffmpeg -y -i "$input_file" -ss "$start_time" -t "$video_duration" -vn -c:a copy "$temp_audio"
 
 # Add the cut audio to the final video
-ffmpeg -y -i "$temp_video" -i "$temp_audio" -c:v copy -c:a copy "$outputFile"
+ffmpeg -y -i "$temp_video" -i "$temp_audio" -c:v copy -c:a copy "$output_file"
 
 # Cleanup
 rm "$temp_audio" "$temp_video"
