@@ -115,10 +115,10 @@ esac
 # Find the next keyframe time after the provided start time.
 # pkt_dts_time returns N/A for some containers (e.g. mkv/Constrained Baseline),
 # so fall back to best_effort_timestamp_time if needed.
-keyframe_time=$(ffprobe -select_streams v -show_frames -skip_frame nokey -show_entries "frame=pkt_dts_time,pict_type" -of csv -v quiet -i "$input_file" | grep ",I" | awk -F',' -v st="$start_time" '$2 != "N/A" && $2 > st {print $2; exit}')
+keyframe_time=$(ffprobe -read_intervals "${start_time}%+60" -select_streams v -show_frames -skip_frame nokey -show_entries "frame=pkt_dts_time,pict_type" -of csv -v quiet -i "$input_file" | grep ",I" | awk -F',' -v st="$start_time" '$2 != "N/A" && $2 > st {print $2; exit}')
 
 if [ -z "$keyframe_time" ]; then
-    keyframe_time=$(ffprobe -select_streams v -show_frames -skip_frame nokey -show_entries "frame=best_effort_timestamp_time,pict_type" -of csv -v quiet -i "$input_file" | grep ",I" | awk -F',' -v st="$start_time" '$2 > st {print $2; exit}')
+    keyframe_time=$(ffprobe -read_intervals "${start_time}%+60" -select_streams v -show_frames -skip_frame nokey -show_entries "frame=best_effort_timestamp_time,pict_type" -of csv -v quiet -i "$input_file" | grep ",I" | awk -F',' -v st="$start_time" '$2 > st {print $2; exit}')
 fi
 
 if [ -z "$keyframe_time" ]; then
@@ -144,12 +144,29 @@ if [ "$(echo "$end_time <= $keyframe_time" | bc -l)" -eq 1 ]; then
     # Entire range is within one GOP: re-encode from start to end.
     ffmpeg -y -ss "$start_time" -to "$end_time" -i "$input_file" -c:v "$video_encoder" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp_video"
 else
-    # General case: re-encode start→keyframe, stream-copy keyframe→end, concat.
-    ffmpeg -y -ss "$start_time" -to "$keyframe_time" -i "$input_file" -c:v "$video_encoder" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp1"
-    ffmpeg -y -i "$input_file" -ss "$keyframe_time" -to "$end_time" -c:v copy -an "$temp2"
-    echo -e "file '$temp1'\nfile '$temp2'" > "$temp_list"
-    ffmpeg -y -f concat -safe 0 -i "$temp_list" -c copy -copyts "$temp_video"
-    rm "$temp1" "$temp2" "$temp_list"
+    # General case: re-encode start→(just before keyframe), stream-copy keyframe→end, concat.
+    # The keyframe is the first frame of the stream-copied part, so the re-encoded stub must
+    # stop one frame short of it — otherwise the keyframe lands in both halves and is duplicated
+    # at the join. Trim by half a frame to drop the keyframe while keeping the frame before it.
+    half_frame=$(echo "scale=10; $fps_den / ($fps_num * 2)" | bc | fix_leading_zero)
+    stub_end=$(echo "$keyframe_time - $half_frame" | bc -l | fix_leading_zero)
+
+    # Fast input seek (-ss before -i) lands exactly on the keyframe. Bound the copy with -t
+    # (duration) rather than -to/-copyts so temp2 stays zero-based — timestamp-identical to the
+    # original output-seek version, which keeps the concat join glitch-free.
+    seg_duration=$(echo "$end_time - $keyframe_time" | bc -l | fix_leading_zero)
+
+    if [ "$(echo "$stub_end <= $start_time" | bc -l)" -eq 1 ]; then
+        # start_time is within one frame of the keyframe: the desired first frame *is* the
+        # keyframe, so skip the re-encoded stub and stream-copy straight from it.
+        ffmpeg -y -ss "$keyframe_time" -i "$input_file" -t "$seg_duration" -c:v copy -an "$temp_video"
+    else
+        ffmpeg -y -ss "$start_time" -to "$stub_end" -i "$input_file" -c:v "$video_encoder" -crf 18 -an -strict -2 -video_track_timescale "$time_base" "$temp1"
+        ffmpeg -y -ss "$keyframe_time" -i "$input_file" -t "$seg_duration" -c:v copy -an "$temp2"
+        echo -e "file '$temp1'\nfile '$temp2'" > "$temp_list"
+        ffmpeg -y -f concat -safe 0 -i "$temp_list" -c copy -copyts "$temp_video"
+        rm "$temp1" "$temp2" "$temp_list"
+    fi
 fi
 
 # Cut the audio (exactly at start with exact duration)
